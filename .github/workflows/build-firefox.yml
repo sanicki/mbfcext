@@ -28,11 +28,10 @@ jobs:
       - name: Install web-ext
         run: npm install -g web-ext
 
-      - name: Stamp version with short SHA
+      - name: Stamp version with run number
         run: |
           BASE=$(jq -r .version package.json)
-          SHA=$(git rev-parse --short HEAD)
-          STAMPED="${BASE}.${SHA}"
+          STAMPED="${BASE}.${{ github.run_number }}"
           jq --arg v "$STAMPED" '.version = $v' package.json > package.json.tmp
           mv package.json.tmp package.json
           echo "Version: $STAMPED"
