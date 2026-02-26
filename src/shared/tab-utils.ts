@@ -16,17 +16,14 @@ export async function getTabById(tabId: number): Promise<Result<browser.Tabs.Tab
 export async function getCurrentTab(): Promise<Result<browser.Tabs.Tab, null>> {
   return new Promise((resolve) => {
     ;(async () => {
-      const queryInfo = {
-        active: true,
-        currentWindow: true,
-      }
-
-      // browser.windows is not available on Android Firefox.
-      // Fall back to the first active tab in that case.
       const hasWindows = typeof browser.windows !== "undefined"
 
       if (hasWindows) {
-        const [tabs, wind] = await Promise.all([browser.tabs.query(queryInfo), browser.windows.getLastFocused()])
+        // Desktop path — use window focus to find the right active tab
+        const [tabs, wind] = await Promise.all([
+          browser.tabs.query({ active: true, currentWindow: true }),
+          browser.windows.getLastFocused(),
+        ])
         let t: browser.Tabs.Tab | undefined
         tabs.forEach((tab) => {
           if (tab.windowId === wind.id) t = tab
@@ -36,10 +33,24 @@ export async function getCurrentTab(): Promise<Result<browser.Tabs.Tab, null>> {
         return resolve(err(null))
       }
 
-      // Android Firefox path — windows API unavailable
-      const tabs = await browser.tabs.query(queryInfo)
-      if (tabs.length) return resolve(ok(tabs[0]))
-      resolve(err(null))
+      // Android Firefox path — the popup opens as a new tab, so querying
+      // { active: true, currentWindow: true } returns the popup itself.
+      // Instead, query all tabs and find the most recently accessed one
+      // that isn't a browser-internal or extension page.
+      const allTabs = await browser.tabs.query({})
+      const contentTabs = allTabs.filter(
+        (tab) =>
+          tab.url &&
+          !tab.url.startsWith("moz-extension://") &&
+          !tab.url.startsWith("about:") &&
+          !tab.url.startsWith("chrome:")
+      )
+
+      if (!contentTabs.length) return resolve(err(null))
+
+      // Pick the most recently accessed content tab
+      const sorted = contentTabs.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0))
+      return resolve(ok(sorted[0]))
     })().catch((e) => {
       console.error(e)
       resolve(err(null))
