@@ -31,7 +31,9 @@ jobs:
       - name: Stamp version with run number
         run: |
           BASE=$(jq -r .version package.json)
-          STAMPED="${BASE}.${{ github.run_number }}"
+          MAJOR=$(echo $BASE | cut -d. -f1)
+          MINOR=$(echo $BASE | cut -d. -f2)
+          STAMPED="${MAJOR}.${MINOR}.${{ github.run_number }}"
           jq --arg v "$STAMPED" '.version = $v' package.json > package.json.tmp
           mv package.json.tmp package.json
           echo "Version: $STAMPED"
