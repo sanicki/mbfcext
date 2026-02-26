@@ -25,11 +25,19 @@ const handler: PlasmoMessaging.MessageHandler<GetDomainForTabRequestBody, GetDom
   const response: GetDomainForTabResponseBody = { site: null }
 
   log(`Domain ${domain} requested`)
-  if (sp.sourceData && sp.loaded) {
-    if (domain in sp.sourceData.sites_by_domain) {
+
+  // Always await getSourceData() rather than checking sp.loaded directly.
+  // On Android, the background service worker is killed between sessions and
+  // sp.loaded will be false when the popup opens — causing an immediate
+  // null return. getSourceData() handles the "already loaded" case cheaply
+  // (it returns immediately if loaded) and correctly awaits the fetch if not.
+  const sourceData = await sp.getSourceData()
+
+  if (sourceData) {
+    if (domain in sourceData.sites_by_domain) {
       log(`Domain ${domain} found`)
-      const details = sp.sourceData.sites_by_domain[domain]
-      const bias = sp.sourceData.combined.biases.find((b) => b.bias === details.bias)
+      const details = sourceData.sites_by_domain[domain]
+      const bias = sourceData.combined.biases.find((b) => b.bias === details.bias)
       log(`Found bias: `, bias)
       response.site = {
         bias: bias.pretty,
@@ -37,10 +45,13 @@ const handler: PlasmoMessaging.MessageHandler<GetDomainForTabRequestBody, GetDom
         mbfcLink: details.url,
         rated: true,
       }
+    } else {
+      log(`Domain ${domain} not found in source data`)
     }
   } else {
-    log(`Domains not loaded `)
+    log(`Failed to load source data`)
   }
+
   res.send(response)
 }
 
